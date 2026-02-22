@@ -33,7 +33,7 @@ class MediaPipeEngine(context: android.content.Context, modelFile: String) : Cha
     override fun resetSession() = model.resetSession()
     override fun stopGeneration() {}
     override fun applySettings(settings: ChatSettings) {}
-    override fun close() {}
+    override fun close() = model.close()
 }
 
 class LlamaCppEngine(context: android.content.Context, modelFile: String) : ChatEngine {
@@ -58,6 +58,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     var modelType: ModelType by mutableStateOf(ModelType.GEMMA3)
     var settings by mutableStateOf(ChatSettings.load(application))
     var isModelLoading by mutableStateOf(false)
+    val isModelLoaded: Boolean get() = engine != null
 
     fun loadModel(type: ModelType) {
         modelType = type
@@ -65,9 +66,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 // 이전 엔진 정리: 생성 중지 → 네이티브 모델 해제 → 참조 제거
-                engine?.stopGeneration()
-                engine?.close()
+                val prevEngine = engine
+                android.util.Log.i("ChatViewModel", "Switching model: closing previous engine=${prevEngine?.javaClass?.simpleName}")
+                prevEngine?.stopGeneration()
+                prevEngine?.close()
                 engine = null
+                android.util.Log.i("ChatViewModel", "Previous engine closed")
 
                 val app = getApplication<Application>()
                 if (!ModelDownloader.modelExists(app, type)) {

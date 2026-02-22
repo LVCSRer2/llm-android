@@ -5,9 +5,11 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.LlmInference.LlmInferenceOptions
 import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession.LlmInferenceSessionOptions
+import android.util.Log
 import java.io.File
 
 class InferenceModel private constructor(context: Context, modelFile: String) {
+    private val TAG = "InferenceModel"
 
     companion object {
         private const val MAX_TOKENS = 1024
@@ -26,6 +28,7 @@ class InferenceModel private constructor(context: Context, modelFile: String) {
                 if (existing2 != null && currentModelFile == modelFile) {
                     return existing2
                 }
+                existing2?.close()
                 instance = null
                 currentModelFile = null
 
@@ -79,5 +82,19 @@ class InferenceModel private constructor(context: Context, modelFile: String) {
             .setTemperature(0.8f)
             .build()
         session = LlmInferenceSession.createFromOptions(engine, sessionOptions)
+    }
+
+    fun close() {
+        Log.i(TAG, "Closing InferenceModel session and engine")
+        try { session.close() } catch (_: Exception) {}
+        try { engine.close() } catch (_: Exception) {}
+        synchronized(Companion) {
+            if (instance === this) {
+                instance = null
+                currentModelFile = null
+            }
+        }
+        System.gc()
+        Log.i(TAG, "InferenceModel closed and GC requested")
     }
 }

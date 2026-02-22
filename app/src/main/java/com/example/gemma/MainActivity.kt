@@ -35,39 +35,37 @@ fun GemmaChatApp() {
     val navController = rememberNavController()
     val chatViewModel: ChatViewModel = viewModel()
 
-    NavHost(navController = navController, startDestination = "select") {
-        composable("select") {
-            ModelSelectScreen(
-                onModelSelected = { modelType ->
-                    chatViewModel.modelType = modelType
-                    if (ModelDownloader.modelExists(navController.context, modelType)) {
-                        chatViewModel.loadModel(modelType)
-                        navController.navigate("chat") {
-                            popUpTo("select") { inclusive = true }
-                        }
+    NavHost(navController = navController, startDestination = "settings") {
+        composable("settings") {
+            SettingsScreen(
+                currentSettings = chatViewModel.settings,
+                currentModel = chatViewModel.modelType,
+                onSave = { newSettings, newModel ->
+                    // 모델이 아직 로드 안 된 상태면 선택된 모델 로드
+                    if (!chatViewModel.isModelLoaded && newModel == null) {
+                        chatViewModel.settings = newSettings
+                        chatViewModel.loadModel(chatViewModel.modelType)
                     } else {
-                        navController.navigate("download/${modelType.name}")
+                        chatViewModel.updateSettings(newSettings, newModel)
                     }
+                    navController.navigate("chat") {
+                        popUpTo("settings") { inclusive = true }
+                    }
+                },
+                onBack = {
+                    if (chatViewModel.isModelLoaded) {
+                        navController.navigate("chat") {
+                            popUpTo("settings") { inclusive = true }
+                        }
+                    }
+                },
+                onDownload = { modelType ->
+                    navController.navigate("download/${modelType.name}")
                 }
             )
         }
 
         composable("download/{modelName}") { backStackEntry ->
-            val modelName = backStackEntry.arguments?.getString("modelName") ?: return@composable
-            val modelType = ModelType.valueOf(modelName)
-
-            DownloadScreen(
-                modelType = modelType,
-                onDownloadComplete = {
-                    chatViewModel.loadModel(modelType)
-                    navController.navigate("chat") {
-                        popUpTo("select") { inclusive = true }
-                    }
-                }
-            )
-        }
-
-        composable("download_from_settings/{modelName}") { backStackEntry ->
             val modelName = backStackEntry.arguments?.getString("modelName") ?: return@composable
             val modelType = ModelType.valueOf(modelName)
 
@@ -84,23 +82,6 @@ fun GemmaChatApp() {
                 chatViewModel = chatViewModel,
                 onOpenSettings = {
                     navController.navigate("settings")
-                }
-            )
-        }
-
-        composable("settings") {
-            SettingsScreen(
-                currentSettings = chatViewModel.settings,
-                currentModel = chatViewModel.modelType,
-                onSave = { newSettings, newModel ->
-                    chatViewModel.updateSettings(newSettings, newModel)
-                    navController.popBackStack()
-                },
-                onBack = {
-                    navController.popBackStack()
-                },
-                onDownload = { modelType ->
-                    navController.navigate("download_from_settings/${modelType.name}")
                 }
             )
         }
