@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+app/build/
+app/.cxx/
+
+# IDE
+.idea/
+*.iml
+local.properties
+
+# Android
+*.apk
+*.aab
+
+# Native build artifacts
+*.o
+*.so
+*.a
+
+# External dependencies (cloned separately)
+external/
+
+# OS
+.DS_Store
+Thumbs.db
