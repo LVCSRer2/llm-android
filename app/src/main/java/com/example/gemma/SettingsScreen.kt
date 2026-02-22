@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -18,7 +19,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -43,7 +43,8 @@ fun SettingsScreen(
     currentSettings: ChatSettings,
     currentModel: ModelType,
     onSave: (ChatSettings, ModelType?) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onDownload: (ModelType) -> Unit = {}
 ) {
     val context = LocalContext.current
     var systemPrompt by remember { mutableStateOf(currentSettings.systemPrompt) }
@@ -52,8 +53,36 @@ fun SettingsScreen(
     var topP by remember { mutableFloatStateOf(currentSettings.topP) }
     var maxTokens by remember { mutableIntStateOf(currentSettings.maxTokens) }
     var repeatPenalty by remember { mutableFloatStateOf(currentSettings.repeatPenalty) }
-    var useVulkan by remember { mutableStateOf(currentSettings.useVulkan) }
     var selectedModel by remember { mutableStateOf(currentModel) }
+    var deleteTarget by remember { mutableStateOf<ModelType?>(null) }
+    // Force recomposition after delete
+    var deleteCounter by remember { mutableIntStateOf(0) }
+
+    // Delete confirmation dialog
+    deleteTarget?.let { modelType ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete Model") },
+            text = { Text("${modelType.displayName} (${modelType.sizeMb}) will be deleted. Are you sure?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    ModelDownloader.deleteModel(context, modelType)
+                    if (selectedModel == modelType) {
+                        selectedModel = currentModel
+                    }
+                    deleteTarget = null
+                    deleteCounter++
+                }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -76,8 +105,7 @@ fun SettingsScreen(
                             topK = topK,
                             topP = topP,
                             maxTokens = maxTokens,
-                            repeatPenalty = repeatPenalty,
-                            useVulkan = useVulkan
+                            repeatPenalty = repeatPenalty
                         )
                         ChatSettings.save(context, newSettings)
                         val modelChanged = if (selectedModel != currentModel) selectedModel else null
@@ -104,12 +132,23 @@ fun SettingsScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
 
+            // Use deleteCounter to force recheck modelExists
+            @Suppress("UNUSED_EXPRESSION")
+            deleteCounter
+
             ModelType.entries.forEach { modelType ->
                 val isSelected = modelType == selectedModel
                 val isDownloaded = ModelDownloader.modelExists(context, modelType)
+                val isCurrentModel = modelType == currentModel
 
                 Card(
-                    onClick = { if (isDownloaded) selectedModel = modelType },
+                    onClick = {
+                        if (isDownloaded) {
+                            selectedModel = modelType
+                        } else {
+                            onDownload(modelType)
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
@@ -129,28 +168,42 @@ fun SettingsScreen(
                             .fillMaxWidth()
                             .padding(12.dp)
                     ) {
+                        Text(text = modelType.displayName)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = modelType.displayName)
                             Text(
-                                text = if (isDownloaded) {
-                                    if (isSelected) "Selected" else "Ready"
-                                } else "Not downloaded",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (isDownloaded)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.error
+                                text = "Size: ${modelType.sizeMb}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            if (isDownloaded) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = if (isSelected) "Selected" else "Ready",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    if (!isCurrentModel) {
+                                        TextButton(onClick = { deleteTarget = modelType }) {
+                                            Text(
+                                                "Delete",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = "Download",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.tertiary
+                                )
+                            }
                         }
-                        Text(
-                            text = "Size: ${modelType.sizeMb}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }
@@ -221,40 +274,6 @@ fun SettingsScreen(
                 format = { "%.2f".format(it) },
                 onValueChange = { repeatPenalty = it }
             )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // GPU Acceleration
-            Text(
-                text = "GPU Acceleration",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Vulkan GPU (llama.cpp)",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = "GGUF models only. Requires model reload.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = useVulkan,
-                    onCheckedChange = { useVulkan = it }
-                )
-            }
 
             Spacer(modifier = Modifier.height(16.dp))
         }

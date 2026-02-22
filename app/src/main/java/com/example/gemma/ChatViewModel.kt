@@ -18,6 +18,7 @@ interface ChatEngine {
     fun resetSession()
     fun stopGeneration()
     fun applySettings(settings: ChatSettings)
+    fun close()
 }
 
 class MediaPipeEngine(context: android.content.Context, modelFile: String) : ChatEngine {
@@ -32,10 +33,11 @@ class MediaPipeEngine(context: android.content.Context, modelFile: String) : Cha
     override fun resetSession() = model.resetSession()
     override fun stopGeneration() {}
     override fun applySettings(settings: ChatSettings) {}
+    override fun close() {}
 }
 
-class LlamaCppEngine(context: android.content.Context, modelFile: String, useVulkan: Boolean = false) : ChatEngine {
-    private val model = LlamaModel.getInstance(context, modelFile, useVulkan)
+class LlamaCppEngine(context: android.content.Context, modelFile: String) : ChatEngine {
+    private val model = LlamaModel.getInstance(context, modelFile)
 
     override fun generateResponseAsync(
         prompt: String,
@@ -46,6 +48,7 @@ class LlamaCppEngine(context: android.content.Context, modelFile: String, useVul
     override fun resetSession() = model.resetSession()
     override fun stopGeneration() = model.stopGeneration()
     override fun applySettings(settings: ChatSettings) = model.applySettings(settings)
+    override fun close() = model.free()
 }
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -61,12 +64,27 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         isModelLoading = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // 이전 엔진 정리: 생성 중지 → 네이티브 모델 해제 → 참조 제거
+                engine?.stopGeneration()
+                engine?.close()
+                engine = null
+
+                val app = getApplication<Application>()
+                if (!ModelDownloader.modelExists(app, type)) {
+                    uiState.addModelMessage(
+                        text = "Model not downloaded: ${type.displayName}",
+                        isLoading = false
+                    )
+                    return@launch
+                }
+
                 engine = when (type) {
                     ModelType.GEMMA3, ModelType.GEMMA3N_E2B ->
-                        MediaPipeEngine(getApplication(), type.fileName)
-                    else -> LlamaCppEngine(getApplication(), type.fileName, settings.useVulkan)
+                        MediaPipeEngine(app, type.fileName)
+                    else -> LlamaCppEngine(app, type.fileName)
                 }
             } catch (e: Exception) {
+                engine = null
                 uiState.addModelMessage(
                     text = "Failed to load model: ${e.message}",
                     isLoading = false
@@ -78,14 +96,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateSettings(newSettings: ChatSettings, newModel: ModelType?) {
-        val vulkanChanged = newSettings.useVulkan != settings.useVulkan
         settings = newSettings
         if (newModel != null && newModel != modelType) {
-            resetChat()
+            uiState.clear()
+            uiState.isGenerating = false
             loadModel(newModel)
-        } else if (vulkanChanged && modelType != ModelType.GEMMA3 && modelType != ModelType.GEMMA3N_E2B) {
-            resetChat()
-            loadModel(modelType)
+        } else {
+            engine?.applySettings(newSettings)
         }
     }
 
@@ -142,8 +159,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun resetChat() {
-        engine?.stopGeneration()
-        engine?.resetSession()
+        try {
+            engine?.stopGeneration()
+            engine?.resetSession()
+        } catch (_: Exception) {}
         uiState.clear()
         uiState.isGenerating = false
     }

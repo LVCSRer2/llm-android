@@ -3,49 +3,47 @@ package com.example.gemma
 import android.content.Context
 import java.io.File
 
-class LlamaModel private constructor(context: Context, modelFile: String, nGpuLayers: Int) {
+class LlamaModel private constructor(context: Context, modelFile: String) {
 
     companion object {
         @Volatile
         private var instance: LlamaModel? = null
         private var currentModelFile: String? = null
-        private var currentGpuLayers: Int = 0
 
         init {
             System.loadLibrary("llama-jni")
         }
 
-        fun getInstance(context: Context, modelFile: String, useVulkan: Boolean = false): LlamaModel {
-            val nGpuLayers = if (useVulkan) 99 else 0
+        fun getInstance(context: Context, modelFile: String): LlamaModel {
             val existing = instance
-            if (existing != null && currentModelFile == modelFile && currentGpuLayers == nGpuLayers) {
+            if (existing != null && currentModelFile == modelFile) {
                 return existing
             }
             synchronized(this) {
                 val existing2 = instance
-                if (existing2 != null && currentModelFile == modelFile && currentGpuLayers == nGpuLayers) {
+                if (existing2 != null && currentModelFile == modelFile) {
                     return existing2
                 }
-                existing2?.freeModel()
+                existing2?.free()
                 instance = null
                 currentModelFile = null
 
-                val newInstance = LlamaModel(context.applicationContext, modelFile, nGpuLayers)
+                val newInstance = LlamaModel(context.applicationContext, modelFile)
                 instance = newInstance
                 currentModelFile = modelFile
-                currentGpuLayers = nGpuLayers
                 return newInstance
             }
         }
     }
 
     private var loaded = false
+    private var freed = false
     private var tokenCallback: ((String) -> Unit)? = null
     var maxTokens: Int = 1024
 
     init {
         val modelPath = File(context.filesDir, modelFile).absolutePath
-        loaded = loadModel(modelPath, nGpuLayers)
+        loaded = loadModel(modelPath)
         if (!loaded) {
             throw RuntimeException("Failed to load model: $modelFile")
         }
@@ -88,13 +86,24 @@ class LlamaModel private constructor(context: Context, modelFile: String, nGpuLa
 
     fun resetSession() {}
 
+    fun free() {
+        if (!freed) {
+            freed = true
+            loaded = false
+            freeModelNative()
+        }
+    }
+
     external fun stopGeneration()
-    private external fun loadModel(modelPath: String, nGpuLayers: Int): Boolean
+    private external fun loadModel(modelPath: String): Boolean
     private external fun generate(prompt: String, maxTokens: Int): String
     private external fun updateSampler(temperature: Float, topK: Int, topP: Float, repeatPenalty: Float)
-    external fun freeModel()
+    private external fun freeModelNative()
 
     protected fun finalize() {
-        freeModel()
+        // GC에서는 현재 활성 인스턴스만 해제
+        if (instance === this && !freed) {
+            free()
+        }
     }
 }

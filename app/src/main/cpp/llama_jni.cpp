@@ -83,12 +83,13 @@ static int validUtf8Len(const std::string &buf) {
 extern "C" {
 
 JNIEXPORT jboolean JNICALL
-Java_com_example_gemma_LlamaModel_loadModel(JNIEnv *env, jobject, jstring model_path, jint n_gpu_layers) {
+Java_com_example_gemma_LlamaModel_loadModel(JNIEnv *env, jobject, jstring model_path) {
     const char *path = env->GetStringUTFChars(model_path, nullptr);
-    LOGI("Loading model: %s (gpu_layers=%d)", path, n_gpu_layers);
+    LOGI("Loading model: %s", path);
 
     llama_model_params mparams = llama_model_default_params();
-    mparams.n_gpu_layers = n_gpu_layers;
+    mparams.n_gpu_layers = 0;
+
     model = llama_model_load_from_file(path, mparams);
     env->ReleaseStringUTFChars(model_path, path);
 
@@ -237,7 +238,7 @@ Java_com_example_gemma_LlamaModel_stopGeneration(JNIEnv *, jobject) {
 }
 
 JNIEXPORT void JNICALL
-Java_com_example_gemma_LlamaModel_freeModel(JNIEnv *, jobject) {
+Java_com_example_gemma_LlamaModel_freeModelNative(JNIEnv *, jobject) {
     if (smpl) {
         llama_sampler_free(smpl);
         smpl = nullptr;

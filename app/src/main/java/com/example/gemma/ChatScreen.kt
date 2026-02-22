@@ -71,7 +71,7 @@ fun ChatScreen(chatViewModel: ChatViewModel = viewModel(), onOpenSettings: () ->
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("LLM Chat") },
+                title = { Text(chatViewModel.modelType.displayName) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer

@@ -9,8 +9,7 @@ data class ChatSettings(
     val topK: Int = 40,
     val topP: Float = 0.95f,
     val maxTokens: Int = 1024,
-    val repeatPenalty: Float = 1.1f,
-    val useVulkan: Boolean = false
+    val repeatPenalty: Float = 1.1f
 ) {
     companion object {
         private const val PREFS_NAME = "chat_settings"
@@ -24,8 +23,7 @@ data class ChatSettings(
                 topK = prefs.getInt("top_k", 40),
                 topP = prefs.getFloat("top_p", 0.95f),
                 maxTokens = prefs.getInt("max_tokens", 1024),
-                repeatPenalty = prefs.getFloat("repeat_penalty", 1.1f),
-                useVulkan = prefs.getBoolean("use_vulkan", false)
+                repeatPenalty = prefs.getFloat("repeat_penalty", 1.1f)
             )
         }
 
@@ -37,7 +35,6 @@ data class ChatSettings(
                 .putFloat("top_p", settings.topP)
                 .putInt("max_tokens", settings.maxTokens)
                 .putFloat("repeat_penalty", settings.repeatPenalty)
-                .putBoolean("use_vulkan", settings.useVulkan)
                 .apply()
         }
     }

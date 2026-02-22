@@ -81,6 +81,11 @@ object ModelDownloader {
         return File(context.filesDir, modelType.fileName).exists()
     }
 
+    fun deleteModel(context: Context, modelType: ModelType): Boolean {
+        val file = File(context.filesDir, modelType.fileName)
+        return if (file.exists()) file.delete() else false
+    }
+
     fun download(context: Context, modelType: ModelType, hfToken: String = ""): Flow<DownloadState> = flow {
         val destFile = File(context.filesDir, modelType.fileName)
         val tmpFile = File(context.filesDir, "${modelType.fileName}.tmp")

@@ -67,6 +67,18 @@ fun GemmaChatApp() {
             )
         }
 
+        composable("download_from_settings/{modelName}") { backStackEntry ->
+            val modelName = backStackEntry.arguments?.getString("modelName") ?: return@composable
+            val modelType = ModelType.valueOf(modelName)
+
+            DownloadScreen(
+                modelType = modelType,
+                onDownloadComplete = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
         composable("chat") {
             ChatScreen(
                 chatViewModel = chatViewModel,
@@ -86,6 +98,9 @@ fun GemmaChatApp() {
                 },
                 onBack = {
                     navController.popBackStack()
+                },
+                onDownload = { modelType ->
+                    navController.navigate("download_from_settings/${modelType.name}")
                 }
             )
         }
