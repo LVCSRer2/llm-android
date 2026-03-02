@@ -38,6 +38,13 @@ enum class ModelType(val fileName: String, val displayName: String, val sizeMb: 
         url = "https://huggingface.co/unsloth/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf",
         needsAuth = false
     ),
+    DEEPSEEK_R1_QWEN_1_5B(
+        fileName = "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+        displayName = "DeepSeek R1 1.5B (llama.cpp CPU)",
+        sizeMb = "~1.1GB",
+        url = "https://huggingface.co/unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+        needsAuth = false
+    ),
     QWEN3(
         fileName = "qwen3-1.7b-q4_k_m.gguf",
         displayName = "Qwen3 1.7B (Q4_K_M)",
