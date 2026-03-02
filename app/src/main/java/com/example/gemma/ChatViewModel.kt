@@ -25,42 +25,8 @@ interface ChatEngine {
     fun close()
 }
 
-class MediaPipeEngine(context: android.content.Context, modelFile: String) : ChatEngine {
-    private val model = InferenceModel.getInstance(context, modelFile)
-
-    override fun generateResponseAsync(
-        prompt: String,
-        onPartialResult: (String) -> Unit,
-        onFinished: (String?) -> Unit
-    ) {
-        model.generateResponseAsync(
-            prompt,
-            { text: String -> onPartialResult(text) },
-            { error: String?, encTime: Double, decTime: Double, inTokens: Int, outTokens: Int ->
-                if (error != null) {
-                    onFinished("Error: $error")
-                } else {
-                    val encTps = if (encTime > 0) inTokens / encTime else 0.0
-                    val decTps = if (decTime > 0) outTokens / decTime else 0.0
-                    val perfInfo = "\n\n[성능 통계]\n" +
-                            "- 입력: $inTokens 토큰 (%.2f초, %.2f t/s)\n".format(encTime, encTps) +
-                            "- 출력: $outTokens 토큰 (%.2f초, %.2f t/s)".format(decTime, decTps)
-                    onFinished(perfInfo)
-                }
-            }
-        )
-    }
-
-    override fun resetSession() = model.resetSession()
-    override fun stopGeneration() {}
-    override fun applySettings(settings: ChatSettings) {}
-    override fun formatPrompt(systemPrompt: String, userMessage: String): String = userMessage
-    override fun countTokens(text: String): Int = model.countTokens(text)
-    override fun close() = model.close()
-}
-
-class LlamaCppEngine(context: android.content.Context, modelFile: String) : ChatEngine {
-    private val model = LlamaModel.getInstance(context, modelFile)
+class LlamaCppEngine(context: android.content.Context, modelFile: String, cpuOptimization: Boolean, contextSize: Int) : ChatEngine {
+    private val model = LlamaModel.getInstance(context, modelFile, cpuOptimization, contextSize)
 
     override fun generateResponseAsync(
         prompt: String,
@@ -87,7 +53,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     val uiState = ChatUiState()
     private var engine: ChatEngine? = null
-    var modelType: ModelType by mutableStateOf(ModelType.GEMMA3)
+    var modelType: ModelType by mutableStateOf(ModelType.GEMMA3_GGUF)
     var settings by mutableStateOf(ChatSettings.load(application))
     var isModelLoading by mutableStateOf(false)
     val isModelLoaded: Boolean get() = engine != null
@@ -113,11 +79,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
-                engine = when (type) {
-                    ModelType.GEMMA3, ModelType.GEMMA3N_E2B ->
-                        MediaPipeEngine(app, type.fileName)
-                    else -> LlamaCppEngine(app, type.fileName)
-                }
+                // Pure llama.cpp CPU branch
+                engine = LlamaCppEngine(app, type.fileName, settings.cpuOptimization, settings.contextSize)
             } catch (e: Exception) {
                 engine = null
                 uiState.addModelMessage(
@@ -179,20 +142,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         isLoading = true
                     )
                 },
-                onFinished = { finalContent: String? ->
-                    if (finalContent != null && finalContent.startsWith("Error: ")) {
+                onFinished = { finalContent ->
+                    if (finalContent != null) {
                         uiState.updateLastModelMessage(
                             text = finalContent,
-                            isLoading = false
-                        )
-                    } else if (finalContent != null) {
-                        val finalText = if (eng is MediaPipeEngine) {
-                            fullResponse.toString() + finalContent
-                        } else {
-                            finalContent
-                        }
-                        uiState.updateLastModelMessage(
-                            text = finalText,
                             isLoading = false
                         )
                     }

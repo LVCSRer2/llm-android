@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -53,12 +54,11 @@ fun SettingsScreen(
     var topP by remember { mutableFloatStateOf(currentSettings.topP) }
     var maxTokens by remember { mutableIntStateOf(currentSettings.maxTokens) }
     var repeatPenalty by remember { mutableFloatStateOf(currentSettings.repeatPenalty) }
+    var cpuOptimization by remember { mutableStateOf(currentSettings.cpuOptimization) }
+    var contextSize by remember { mutableIntStateOf(currentSettings.contextSize) }
     var selectedModel by remember { mutableStateOf(currentModel) }
     var deleteTarget by remember { mutableStateOf<ModelType?>(null) }
-    // Force recomposition after delete
-    var deleteCounter by remember { mutableIntStateOf(0) }
 
-    // Delete confirmation dialog
     deleteTarget?.let { modelType ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
@@ -67,11 +67,8 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     ModelDownloader.deleteModel(context, modelType)
-                    if (selectedModel == modelType) {
-                        selectedModel = currentModel
-                    }
+                    if (selectedModel == modelType) selectedModel = currentModel
                     deleteTarget = null
-                    deleteCounter++
                 }) {
                     Text("Delete", color = MaterialTheme.colorScheme.error)
                 }
@@ -87,7 +84,7 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text("llama.cpp CPU Settings") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -105,7 +102,9 @@ fun SettingsScreen(
                             topK = topK,
                             topP = topP,
                             maxTokens = maxTokens,
-                            repeatPenalty = repeatPenalty
+                            repeatPenalty = repeatPenalty,
+                            cpuOptimization = cpuOptimization,
+                            contextSize = contextSize
                         )
                         ChatSettings.save(context, newSettings)
                         val modelChanged = if (selectedModel != currentModel) selectedModel else null
@@ -124,17 +123,12 @@ fun SettingsScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Model Selection
             Text(
-                text = "Model",
+                text = "GGUF Models (CPU)",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(8.dp))
-
-            // Use deleteCounter to force recheck modelExists
-            @Suppress("UNUSED_EXPRESSION")
-            deleteCounter
 
             ModelType.entries.forEach { modelType ->
                 val isSelected = modelType == selectedModel
@@ -143,65 +137,29 @@ fun SettingsScreen(
 
                 Card(
                     onClick = {
-                        if (isDownloaded) {
-                            selectedModel = modelType
-                        } else {
-                            onDownload(modelType)
-                        }
+                        if (isDownloaded) selectedModel = modelType else onDownload(modelType)
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected)
-                            MaterialTheme.colorScheme.primaryContainer
-                        else
-                            MaterialTheme.colorScheme.surface
+                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
                     ),
-                    border = if (isSelected)
-                        BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-                    else
-                        BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                    border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp)
-                    ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
                         Text(text = modelType.displayName)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Size: ${modelType.sizeMb}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(text = "Size: ${modelType.sizeMb}", style = MaterialTheme.typography.bodySmall)
                             if (isDownloaded) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = if (isSelected) "Selected" else "Ready",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                Row {
+                                    Text(text = if (isSelected) "Selected" else "Ready", color = MaterialTheme.colorScheme.primary)
                                     if (!isCurrentModel) {
                                         TextButton(onClick = { deleteTarget = modelType }) {
-                                            Text(
-                                                "Delete",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.error
-                                            )
+                                            Text("Delete", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
                                         }
                                     }
                                 }
                             } else {
-                                Text(
-                                    text = "Download",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.tertiary
-                                )
+                                Text(text = "Download", color = MaterialTheme.colorScheme.tertiary)
                             }
                         }
                     }
@@ -210,7 +168,34 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // System Prompt
+            Text(
+                text = "CPU Optimization",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "OpenMP / mmap", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        text = "Enable multi-core acceleration.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = cpuOptimization, onCheckedChange = { cpuOptimization = it })
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            SliderSetting("Context Size", contextSize.toFloat(), 512f..8192f, { it.roundToInt().toString() }) { contextSize = it.roundToInt() }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
             Text(
                 text = "System Prompt",
                 style = MaterialTheme.typography.titleMedium,
@@ -227,7 +212,6 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Parameters
             Text(
                 text = "Parameters",
                 style = MaterialTheme.typography.titleMedium,
@@ -235,45 +219,11 @@ fun SettingsScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            SliderSetting(
-                label = "Temperature",
-                value = temperature,
-                range = 0f..2f,
-                format = { "%.2f".format(it) },
-                onValueChange = { temperature = it }
-            )
-
-            SliderSetting(
-                label = "Top-K",
-                value = topK.toFloat(),
-                range = 1f..100f,
-                format = { it.roundToInt().toString() },
-                onValueChange = { topK = it.roundToInt() }
-            )
-
-            SliderSetting(
-                label = "Top-P",
-                value = topP,
-                range = 0f..1f,
-                format = { "%.2f".format(it) },
-                onValueChange = { topP = it }
-            )
-
-            SliderSetting(
-                label = "Max Tokens",
-                value = maxTokens.toFloat(),
-                range = 64f..2048f,
-                format = { it.roundToInt().toString() },
-                onValueChange = { maxTokens = it.roundToInt() }
-            )
-
-            SliderSetting(
-                label = "Repeat Penalty",
-                value = repeatPenalty,
-                range = 1f..2f,
-                format = { "%.2f".format(it) },
-                onValueChange = { repeatPenalty = it }
-            )
+            SliderSetting("Temperature", temperature, 0f..2f, { "%.2f".format(it) }) { temperature = it }
+            SliderSetting("Top-K", topK.toFloat(), 1f..100f, { it.roundToInt().toString() }) { topK = it.roundToInt() }
+            SliderSetting("Top-P", topP, 0f..1f, { "%.2f".format(it) }) { topP = it }
+            SliderSetting("Max Tokens", maxTokens.toFloat(), 64f..2048f, { it.roundToInt().toString() }) { maxTokens = it.roundToInt() }
+            SliderSetting("Repeat Penalty", repeatPenalty, 1f..2f, { "%.2f".format(it) }) { repeatPenalty = it }
 
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -281,34 +231,10 @@ fun SettingsScreen(
 }
 
 @Composable
-fun SliderSetting(
-    label: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    format: (Float) -> String,
-    onValueChange: (Float) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.weight(0.35f),
-            style = MaterialTheme.typography.bodyMedium
-        )
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = range,
-            modifier = Modifier.weight(0.45f)
-        )
-        Text(
-            text = format(value),
-            modifier = Modifier.weight(0.2f),
-            style = MaterialTheme.typography.bodySmall
-        )
+fun SliderSetting(label: String, value: Float, range: ClosedFloatingPointRange<Float>, format: (Float) -> String, onValueChange: (Float) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(text = label, modifier = Modifier.weight(0.35f), style = MaterialTheme.typography.bodyMedium)
+        Slider(value = value, onValueChange = onValueChange, valueRange = range, modifier = Modifier.weight(0.45f))
+        Text(text = format(value), modifier = Modifier.weight(0.2f), style = MaterialTheme.typography.bodySmall)
     }
 }
