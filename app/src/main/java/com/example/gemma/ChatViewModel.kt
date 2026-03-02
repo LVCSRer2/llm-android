@@ -18,6 +18,7 @@ interface ChatEngine {
     fun resetSession()
     fun stopGeneration()
     fun applySettings(settings: ChatSettings)
+    fun formatPrompt(systemPrompt: String, userMessage: String): String
     fun close()
 }
 
@@ -33,6 +34,7 @@ class MediaPipeEngine(context: android.content.Context, modelFile: String) : Cha
     override fun resetSession() = model.resetSession()
     override fun stopGeneration() {}
     override fun applySettings(settings: ChatSettings) {}
+    override fun formatPrompt(systemPrompt: String, userMessage: String): String = userMessage
     override fun close() = model.close()
 }
 
@@ -48,6 +50,8 @@ class LlamaCppEngine(context: android.content.Context, modelFile: String) : Chat
     override fun resetSession() = model.resetSession()
     override fun stopGeneration() = model.stopGeneration()
     override fun applySettings(settings: ChatSettings) = model.applySettings(settings)
+    override fun formatPrompt(systemPrompt: String, userMessage: String): String =
+        model.formatPrompt(systemPrompt, userMessage)
     override fun close() = model.free()
 }
 
@@ -65,13 +69,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         isModelLoading = true
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // 이전 엔진 정리: 생성 중지 → 네이티브 모델 해제 → 참조 제거
                 val prevEngine = engine
-                android.util.Log.i("ChatViewModel", "Switching model: closing previous engine=${prevEngine?.javaClass?.simpleName}")
                 prevEngine?.stopGeneration()
                 prevEngine?.close()
                 engine = null
-                android.util.Log.i("ChatViewModel", "Previous engine closed")
 
                 val app = getApplication<Application>()
                 if (!ModelDownloader.modelExists(app, type)) {
@@ -118,16 +119,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         uiState.addUserMessage(userMessage)
         uiState.addModelMessage(text = "", isLoading = true)
 
-        // Apply settings to engine
         eng.applySettings(settings)
-
-        // Build prompt with system prompt
-        val fullPrompt = if (settings.systemPrompt.isNotBlank()) {
-            "<|system|>\n${settings.systemPrompt}\n<|user|>\n$userMessage\n<|assistant|>\n"
-        } else {
-            userMessage
-        }
-
+        
+        // Let the engine format the prompt based on the specific model's template
+        val fullPrompt = eng.formatPrompt(settings.systemPrompt, userMessage)
         val fullResponse = StringBuilder()
 
         viewModelScope.launch(Dispatchers.IO) {

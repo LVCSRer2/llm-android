@@ -59,6 +59,11 @@ class LlamaModel private constructor(context: Context, modelFile: String) {
         updateSampler(settings.temperature, settings.topK, settings.topP, settings.repeatPenalty)
     }
 
+    fun formatPrompt(systemPrompt: String, userMessage: String): String {
+        if (!loaded) return userMessage
+        return formatPromptNative(systemPrompt, userMessage)
+    }
+
     fun generateResponseAsync(
         prompt: String,
         onPartialResult: (String) -> Unit,
@@ -97,6 +102,7 @@ class LlamaModel private constructor(context: Context, modelFile: String) {
     external fun stopGeneration()
     private external fun loadModel(modelPath: String): Boolean
     private external fun generate(prompt: String, maxTokens: Int): String
+    private external fun formatPromptNative(systemPrompt: String, userMessage: String): String
     private external fun updateSampler(temperature: Float, topK: Int, topP: Float, repeatPenalty: Float)
     private external fun freeModelNative()
 
