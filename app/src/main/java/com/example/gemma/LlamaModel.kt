@@ -3,7 +3,7 @@ package com.example.gemma
 import android.content.Context
 import java.io.File
 
-class LlamaModel private constructor(context: Context, modelFile: String) {
+class LlamaModel private constructor(context: Context, modelFile: String, cpuOptimization: Boolean, contextSize: Int) {
 
     companion object {
         @Volatile
@@ -14,7 +14,7 @@ class LlamaModel private constructor(context: Context, modelFile: String) {
             System.loadLibrary("llama-jni")
         }
 
-        fun getInstance(context: Context, modelFile: String): LlamaModel {
+        fun getInstance(context: Context, modelFile: String, cpuOptimization: Boolean = true, contextSize: Int = 2048): LlamaModel {
             val existing = instance
             if (existing != null && currentModelFile == modelFile) {
                 return existing
@@ -28,7 +28,7 @@ class LlamaModel private constructor(context: Context, modelFile: String) {
                 instance = null
                 currentModelFile = null
 
-                val newInstance = LlamaModel(context.applicationContext, modelFile)
+                val newInstance = LlamaModel(context.applicationContext, modelFile, cpuOptimization, contextSize)
                 instance = newInstance
                 currentModelFile = modelFile
                 return newInstance
@@ -43,7 +43,7 @@ class LlamaModel private constructor(context: Context, modelFile: String) {
 
     init {
         val modelPath = File(context.filesDir, modelFile).absolutePath
-        loaded = loadModel(modelPath)
+        loaded = loadModel(modelPath, cpuOptimization, contextSize)
         if (!loaded) {
             throw RuntimeException("Failed to load model: $modelFile")
         }
@@ -105,7 +105,7 @@ class LlamaModel private constructor(context: Context, modelFile: String) {
 
     external fun stopGeneration()
     private external fun countTokensNative(text: String): Int
-    private external fun loadModel(modelPath: String): Boolean
+    private external fun loadModel(modelPath: String, cpuOptimization: Boolean, contextSize: Int): Boolean
     private external fun generate(prompt: String, maxTokens: Int): String
     private external fun formatPromptNative(systemPrompt: String, userMessage: String): String
     private external fun updateSampler(temperature: Float, topK: Int, topP: Float, repeatPenalty: Float)

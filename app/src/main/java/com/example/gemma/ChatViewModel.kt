@@ -79,7 +79,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
-                // Pure llama.cpp CPU branch
                 engine = LlamaCppEngine(app, type.fileName, settings.cpuOptimization, settings.contextSize)
             } catch (e: Exception) {
                 engine = null
