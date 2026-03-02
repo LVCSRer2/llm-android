@@ -1,10 +1,15 @@
 package com.example.gemma
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 class ChatUiState {
     val messages = mutableStateListOf<ChatMessage>()
-    var isGenerating: Boolean = false
+    var isGenerating by mutableStateOf(false)
+    var inputTokenCount by mutableIntStateOf(0)
 
     fun addUserMessage(text: String) {
         messages.add(ChatMessage(text = text, author = MessageAuthor.USER))

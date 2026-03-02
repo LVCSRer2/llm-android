@@ -98,6 +98,18 @@ Java_com_example_gemma_LlamaModel_loadModel(JNIEnv *env, jobject, jstring model_
     return JNI_TRUE;
 }
 
+JNIEXPORT jint JNICALL
+Java_com_example_gemma_LlamaModel_countTokensNative(JNIEnv *env, jobject, jstring text) {
+    if (!model) return 0;
+    const char *cstr = env->GetStringUTFChars(text, nullptr);
+    std::string str(cstr);
+    env->ReleaseStringUTFChars(text, cstr);
+    
+    const llama_vocab *vocab = llama_model_get_vocab(model);
+    std::vector<llama_token> tokens = tokenize(vocab, str, true, true);
+    return (jint)tokens.size();
+}
+
 JNIEXPORT void JNICALL
 Java_com_example_gemma_LlamaModel_updateSampler(JNIEnv *, jobject,
     jfloat temperature, jint topK, jfloat topP, jfloat repeatPenalty) {

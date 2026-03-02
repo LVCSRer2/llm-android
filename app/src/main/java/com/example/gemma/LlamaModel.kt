@@ -59,8 +59,12 @@ class LlamaModel private constructor(context: Context, modelFile: String) {
         updateSampler(settings.temperature, settings.topK, settings.topP, settings.repeatPenalty)
     }
 
+    fun countTokens(text: String): Int {
+        if (!loaded) return 0
+        return countTokensNative(text)
+    }
+
     fun formatPrompt(systemPrompt: String, userMessage: String): String {
-        if (!loaded) return userMessage
         return formatPromptNative(systemPrompt, userMessage)
     }
 
@@ -80,7 +84,7 @@ class LlamaModel private constructor(context: Context, modelFile: String) {
             if (result.startsWith("Error: ")) {
                 onFinished(result)
             } else {
-                onFinished(null)
+                onFinished(result)
             }
         } catch (e: Exception) {
             onFinished(e.message)
@@ -100,6 +104,7 @@ class LlamaModel private constructor(context: Context, modelFile: String) {
     }
 
     external fun stopGeneration()
+    private external fun countTokensNative(text: String): Int
     private external fun loadModel(modelPath: String): Boolean
     private external fun generate(prompt: String, maxTokens: Int): String
     private external fun formatPromptNative(systemPrompt: String, userMessage: String): String
@@ -107,7 +112,6 @@ class LlamaModel private constructor(context: Context, modelFile: String) {
     private external fun freeModelNative()
 
     protected fun finalize() {
-        // GC에서는 현재 활성 인스턴스만 해제
         if (instance === this && !freed) {
             free()
         }

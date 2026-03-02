@@ -7,6 +7,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 interface ChatEngine {
@@ -19,6 +21,7 @@ interface ChatEngine {
     fun stopGeneration()
     fun applySettings(settings: ChatSettings)
     fun formatPrompt(systemPrompt: String, userMessage: String): String
+    fun countTokens(text: String): Int
     fun close()
 }
 
@@ -29,12 +32,30 @@ class MediaPipeEngine(context: android.content.Context, modelFile: String) : Cha
         prompt: String,
         onPartialResult: (String) -> Unit,
         onFinished: (String?) -> Unit
-    ) = model.generateResponseAsync(prompt, onPartialResult, onFinished)
+    ) {
+        model.generateResponseAsync(
+            prompt,
+            { text: String -> onPartialResult(text) },
+            { error: String?, encTime: Double, decTime: Double, inTokens: Int, outTokens: Int ->
+                if (error != null) {
+                    onFinished("Error: $error")
+                } else {
+                    val encTps = if (encTime > 0) inTokens / encTime else 0.0
+                    val decTps = if (decTime > 0) outTokens / decTime else 0.0
+                    val perfInfo = "\n\n[성능 통계]\n" +
+                            "- 입력: $inTokens 토큰 (%.2f초, %.2f t/s)\n".format(encTime, encTps) +
+                            "- 출력: $outTokens 토큰 (%.2f초, %.2f t/s)".format(decTime, decTps)
+                    onFinished(perfInfo)
+                }
+            }
+        )
+    }
 
     override fun resetSession() = model.resetSession()
     override fun stopGeneration() {}
     override fun applySettings(settings: ChatSettings) {}
     override fun formatPrompt(systemPrompt: String, userMessage: String): String = userMessage
+    override fun countTokens(text: String): Int = model.countTokens(text)
     override fun close() = model.close()
 }
 
@@ -45,13 +66,20 @@ class LlamaCppEngine(context: android.content.Context, modelFile: String) : Chat
         prompt: String,
         onPartialResult: (String) -> Unit,
         onFinished: (String?) -> Unit
-    ) = model.generateResponseAsync(prompt, onPartialResult, onFinished)
+    ) {
+        model.generateResponseAsync(
+            prompt,
+            { token -> onPartialResult(token) },
+            { finalResult -> onFinished(finalResult) }
+        )
+    }
 
     override fun resetSession() = model.resetSession()
     override fun stopGeneration() = model.stopGeneration()
     override fun applySettings(settings: ChatSettings) = model.applySettings(settings)
     override fun formatPrompt(systemPrompt: String, userMessage: String): String =
         model.formatPrompt(systemPrompt, userMessage)
+    override fun countTokens(text: String): Int = model.countTokens(text)
     override fun close() = model.free()
 }
 
@@ -63,6 +91,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     var settings by mutableStateOf(ChatSettings.load(application))
     var isModelLoading by mutableStateOf(false)
     val isModelLoaded: Boolean get() = engine != null
+    
+    private var tokenCountJob: Job? = null
 
     fun loadModel(type: ModelType) {
         modelType = type
@@ -111,6 +141,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun onInputTextChanged(text: String) {
+        tokenCountJob?.cancel()
+        if (text.isBlank()) {
+            uiState.inputTokenCount = 0
+            return
+        }
+        
+        tokenCountJob = viewModelScope.launch(Dispatchers.Default) {
+            delay(300)
+            val count = engine?.countTokens(text) ?: 0
+            uiState.inputTokenCount = count
+        }
+    }
+
     fun sendMessage(userMessage: String) {
         val eng = engine ?: return
         if (uiState.isGenerating) return
@@ -118,10 +162,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         uiState.isGenerating = true
         uiState.addUserMessage(userMessage)
         uiState.addModelMessage(text = "", isLoading = true)
+        uiState.inputTokenCount = 0
 
         eng.applySettings(settings)
         
-        // Let the engine format the prompt based on the specific model's template
         val fullPrompt = eng.formatPrompt(settings.systemPrompt, userMessage)
         val fullResponse = StringBuilder()
 
@@ -135,15 +179,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         isLoading = true
                     )
                 },
-                onFinished = { error ->
-                    if (error != null) {
+                onFinished = { finalContent: String? ->
+                    if (finalContent != null && finalContent.startsWith("Error: ")) {
                         uiState.updateLastModelMessage(
-                            text = "Error: $error",
+                            text = finalContent,
                             isLoading = false
                         )
-                    } else {
+                    } else if (finalContent != null) {
+                        val finalText = if (eng is MediaPipeEngine) {
+                            fullResponse.toString() + finalContent
+                        } else {
+                            finalContent
+                        }
                         uiState.updateLastModelMessage(
-                            text = fullResponse.toString(),
+                            text = finalText,
                             isLoading = false
                         )
                     }

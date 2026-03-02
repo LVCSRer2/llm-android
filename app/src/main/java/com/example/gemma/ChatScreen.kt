@@ -143,6 +143,8 @@ fun ChatScreen(chatViewModel: ChatViewModel = viewModel(), onOpenSettings: () ->
 
                     MessageInput(
                         enabled = !uiState.isGenerating,
+                        tokenCount = uiState.inputTokenCount,
+                        onTextChanged = { chatViewModel.onInputTextChanged(it) },
                         onSend = { chatViewModel.sendMessage(it) }
                     )
                 }
@@ -252,7 +254,12 @@ fun MessageBubble(message: ChatMessage) {
 }
 
 @Composable
-fun MessageInput(enabled: Boolean, onSend: (String) -> Unit) {
+fun MessageInput(
+    enabled: Boolean, 
+    tokenCount: Int,
+    onTextChanged: (String) -> Unit,
+    onSend: (String) -> Unit
+) {
     var text by remember { mutableStateOf("") }
 
     fun send() {
@@ -263,36 +270,50 @@ fun MessageInput(enabled: Boolean, onSend: (String) -> Unit) {
         }
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            modifier = Modifier.weight(1f),
-            placeholder = { Text("Type a message...") },
-            enabled = enabled,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { send() }),
-            maxLines = 4,
-            shape = RoundedCornerShape(24.dp)
-        )
-
-        IconButton(
-            onClick = { send() },
-            enabled = enabled && text.isNotBlank()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { 
+                    text = it
+                    onTextChanged(it)
+                },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Type a message...") },
+                enabled = enabled,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { send() }),
+                maxLines = 4,
+                shape = RoundedCornerShape(24.dp)
+            )
+
+            IconButton(
+                onClick = { send() },
+                enabled = enabled && text.isNotBlank()
+            ) {
+                Text(
+                    text = "\u27A4",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = if (enabled && text.isNotBlank())
+                        MaterialTheme.colorScheme.primary
+                    else
+                        Color.Gray
+                )
+            }
+        }
+        
+        if (text.isNotEmpty()) {
             Text(
-                text = "\u27A4",
-                style = MaterialTheme.typography.headlineSmall,
-                color = if (enabled && text.isNotBlank())
-                    MaterialTheme.colorScheme.primary
-                else
-                    Color.Gray
+                text = "Input: $tokenCount tokens",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 24.dp, bottom = 8.dp)
             )
         }
     }
