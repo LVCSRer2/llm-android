@@ -18,23 +18,9 @@ android {
             abiFilters += listOf("arm64-v8a")
         }
 
-        externalNativeBuild {
-            cmake {
-                arguments += listOf(
-                    "-DCMAKE_BUILD_TYPE=Release",
-                    "-DANDROID_STL=c++_shared",
-                    "-DANDROID_PLATFORM=android-29"
-                )
-                cppFlags += "-std=c++17"
-            }
         }
     }
 
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
     }
 
     buildTypes {

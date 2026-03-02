@@ -20,7 +20,6 @@ interface ChatEngine {
     fun resetSession()
     fun stopGeneration()
     fun applySettings(settings: ChatSettings)
-    fun formatPrompt(systemPrompt: String, userMessage: String): String
     fun countTokens(text: String): Int
     fun close()
 }
@@ -42,9 +41,9 @@ class MediaPipeEngine(context: android.content.Context, modelFile: String) : Cha
                 } else {
                     val encTps = if (encTime > 0) inTokens / encTime else 0.0
                     val decTps = if (decTime > 0) outTokens / decTime else 0.0
-                    val perfInfo = "\n\n[성능 통계]\n" +
-                            "- 입력: $inTokens 토큰 (%.2f초, %.2f t/s)\n".format(encTime, encTps) +
-                            "- 출력: $outTokens 토큰 (%.2f초, %.2f t/s)".format(decTime, decTps)
+                    val perfInfo = "\n\n[MediaPipe GPU Stats]\n" +
+                            "- Prefill: %.2f t/s (%.2fs)\n".format(encTps, encTime) +
+                            "- Decode: %.2f t/s (%.2fs)".format(decTps, decTime)
                     onFinished(perfInfo)
                 }
             }
@@ -54,33 +53,8 @@ class MediaPipeEngine(context: android.content.Context, modelFile: String) : Cha
     override fun resetSession() = model.resetSession()
     override fun stopGeneration() {}
     override fun applySettings(settings: ChatSettings) {}
-    override fun formatPrompt(systemPrompt: String, userMessage: String): String = userMessage
     override fun countTokens(text: String): Int = model.countTokens(text)
     override fun close() = model.close()
-}
-
-class LlamaCppEngine(context: android.content.Context, modelFile: String) : ChatEngine {
-    private val model = LlamaModel.getInstance(context, modelFile)
-
-    override fun generateResponseAsync(
-        prompt: String,
-        onPartialResult: (String) -> Unit,
-        onFinished: (String?) -> Unit
-    ) {
-        model.generateResponseAsync(
-            prompt,
-            { token -> onPartialResult(token) },
-            { finalResult -> onFinished(finalResult) }
-        )
-    }
-
-    override fun resetSession() = model.resetSession()
-    override fun stopGeneration() = model.stopGeneration()
-    override fun applySettings(settings: ChatSettings) = model.applySettings(settings)
-    override fun formatPrompt(systemPrompt: String, userMessage: String): String =
-        model.formatPrompt(systemPrompt, userMessage)
-    override fun countTokens(text: String): Int = model.countTokens(text)
-    override fun close() = model.free()
 }
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -100,7 +74,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val prevEngine = engine
-                prevEngine?.stopGeneration()
                 prevEngine?.close()
                 engine = null
 
@@ -113,11 +86,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
-                engine = when (type) {
-                    ModelType.GEMMA3, ModelType.GEMMA3N_E2B ->
-                        MediaPipeEngine(app, type.fileName)
-                    else -> LlamaCppEngine(app, type.fileName)
-                }
+                // MediaPipe only branch
+                engine = MediaPipeEngine(app, type.fileName)
             } catch (e: Exception) {
                 engine = null
                 uiState.addModelMessage(
@@ -166,12 +136,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         eng.applySettings(settings)
         
-        val fullPrompt = eng.formatPrompt(settings.systemPrompt, userMessage)
         val fullResponse = StringBuilder()
 
         viewModelScope.launch(Dispatchers.IO) {
             eng.generateResponseAsync(
-                prompt = fullPrompt,
+                prompt = userMessage,
                 onPartialResult = { partial ->
                     fullResponse.append(partial)
                     uiState.updateLastModelMessage(
@@ -179,20 +148,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         isLoading = true
                     )
                 },
-                onFinished = { finalContent: String? ->
-                    if (finalContent != null && finalContent.startsWith("Error: ")) {
+                onFinished = { finalPerfTag ->
+                    if (finalPerfTag != null && finalPerfTag.startsWith("Error: ")) {
                         uiState.updateLastModelMessage(
-                            text = finalContent,
+                            text = finalPerfTag,
                             isLoading = false
                         )
-                    } else if (finalContent != null) {
-                        val finalText = if (eng is MediaPipeEngine) {
-                            fullResponse.toString() + finalContent
-                        } else {
-                            finalContent
-                        }
+                    } else if (finalPerfTag != null) {
                         uiState.updateLastModelMessage(
-                            text = finalText,
+                            text = fullResponse.toString() + finalPerfTag,
                             isLoading = false
                         )
                     }
@@ -208,7 +172,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetChat() {
         try {
-            engine?.stopGeneration()
             engine?.resetSession()
         } catch (_: Exception) {}
         uiState.clear()
